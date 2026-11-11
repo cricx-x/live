@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cricx-X Live Stream</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root { --bg: #0f172a; --card: #1e293b; --primary: #3b82f6; --text: #f8fafc; --danger: #ef4444; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: var(--card); border-radius: 12px; margin-bottom: 20px; }
+        header h1 { font-size: 1.2rem; color: var(--primary); }
+        .header-links a { color: var(--text); text-decoration: none; margin-left: 15px; font-weight: bold; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
+        .card { background: var(--card); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+        .card h3 { font-size: 1rem; }
+        .card p { font-size: 0.85rem; color: #94a3b8; }
+        .btn { padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; text-align: center; }
+        .btn-watch { background: var(--primary); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-edit { background: #f59e0b; color: white; }
+        .admin-panel { display: none; margin-top: 20px; padding: 20px; background: var(--card); border-radius: 12px; }
+        .admin-panel.active { display: block; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-size: 0.9rem; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: var(--bg); color: var(--text); }
+        .player-container { background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 15px; }
+        video { width: 100%; max-height: 500px; }
+        iframe { width: 100%; height: 400px; border: none; }
+        .hidden { display: none !important; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        .tab { padding: 8px 16px; background: var(--card); border-radius: 20px; cursor: pointer; font-size: 0.9rem; }
+        .tab.active { background: var(--primary); }
+        #preview-area { margin-top: 20px; }
+        .source-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        .source-buttons button { padding: 8px 12px; background: #334155; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Cricx-X Live Stream</h1>
+        <div class="header-links">
+            <a href="https://t.me/cricxq" target="_blank">📢 Telegram</a>
+            <a href="#" id="adminToggleBtn">🔐 Admin</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Admin Login Modal -->
+        <div id="loginModal" class="card hidden" style="max-width: 300px; margin: 20px auto;">
+            <h3>Admin Login</h3>
+            <input type="password" id="adminPassword" placeholder="Password" style="margin-top: 10px; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: var(--bg); color: white;">
+            <button class="btn btn-watch" style="margin-top: 10px;" onclick="loginAdmin()">Login</button>
+            <p id="loginError" style="color: red; font-size: 0.8rem; margin-top: 5px;"></p>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="adminPanel" class="admin-panel">
+            <h2>Admin Panel</h2>
+            <div class="form-group">
+                <label>Type</label>
+                <select id="contentType">
+                    <option value="match">Match</option>
+                    <option value="channel">24/7 Channel</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Title (e.g., Team A vs Team B / Channel Name)</label>
+                <input type="text" id="contentTitle">
+            </div>
+            <div class="form-group">
+                <label>Logo URL (Optional)</label>
+                <input type="text" id="contentLogo" placeholder="https://example.com/logo.png">
+            </div>
+            <div class="form-group">
+                <label>Stream Source URLs (Comma separated for multiple sources)</label>
+                <input type="text" id="contentSources" placeholder="https://youtube.com/live/..., https://twitch.tv/..., https://example.com/stream.m3u8">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="contentStatus">
+                    <option value="live">Live Now</option>
+                    <option value="upcoming">Upcoming</option>
+                    <option value="finished">Finished</option>
+                </select>
+            </div>
+            <button class="btn btn-watch" onclick="addContent()">➕ Add New</button>
+            <button class="btn btn-danger" onclick="clearAllData()" style="margin-top: 10px;">🗑️ Clear All Data</button>
+            
+            <h3 style="margin-top: 20px;">Manage Existing Content</h3>
+            <div id="adminList" style="margin-top: 10px;"></div>
+        </div>
+
+        <!-- Player Modal -->
+        <div id="playerModal" class="card hidden" style="margin-bottom: 20px;">
+            <h2 id="playerTitle" style="margin-bottom: 10px;"></h2>
+            <div class="player-container" id="playerContainer"></div>
+            <div id="sourceSelector"></div>
+            <button class="btn btn-danger" style="margin-top: 10px;" onclick="closePlayer()">Close Player</button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="filterContent('all')">All</div>
+            <div class="tab" onclick="filterContent('live')">Live Now</div>
+            <div class="tab" onclick="filterContent('upcoming')">Upcoming</div>
+            <div class="tab" onclick="filterContent('finished')">Finished</div>
+        </div>
+
+        <!-- Content Grid -->
+        <div id="contentGrid" class="grid"></div>
+    </div>
+
+    <script>
+        // --- Default Data (Dummy) ---
+        const defaultData = [
+            { id: 1, type: 'match', title: 'Bangladesh vs India', logo: 'https://via.placeholder.com/50/3b82f6/ffffff?text=BD', sources: ['https://www.youtube.com/watch?v=live_demo_1', 'https://www.twitch.tv/demo_channel'], status: 'live' },
+            { id: 2, type: 'match', title: 'Australia vs England', logo: 'https://via.placeholder.com/50/3b82f6/ffffff?text=AUS', sources: ['https://example.com/stream.m3u8'], status: 'upcoming' },
+            { id: 3, type: 'channel', title: 'Star Sports 1 HD', logo: 'https://via.placeholder.com/50/ef4444/ffffff?text=SS1', sources: ['https://www.youtube.com/watch?v=live_demo_3'], status: 'live' },
+            { id: 4, type: 'channel', title: 'Sky Sports Cricket', logo: 'https://via.placeholder.com/50/ef4444/ffffff?text=Sky', sources: ['https://example.com/sky.m3u8'], status: 'live' }
+        ];
+
+        let contentData = JSON.parse(localStorage.getItem('cricxData')) || defaultData;
+        let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+
+        // --- Init ---
+        function init() {
+            if (!localStorage.getItem('cricxData')) {
+                localStorage.setItem('cricxData', JSON.stringify(defaultData));
+            }
+            renderGrid();
+            if (isAdmin) showAdminPanel();
+        }
+
+        // --- Render ---
+        function renderGrid(filter = 'all') {
+            const grid = document.getElementById('contentGrid');
+            grid.innerHTML = '';
+            const filtered = filter === 'all' ? contentData : contentData.filter(item => item.status === filter);
+            
+            if (filtered.length === 0) { grid.innerHTML = '<p>No content found.</p>'; return; }
+
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <img src="${item.logo || 'https://via.placeholder.com/50'}" alt="logo" style="width: 40px; height: 40px; border-radius: 50%;">
+                        <div>
+                            <h3>${item.title}</h3>
+                            <p>${item.type === 'match' ? 'Match' : '24/7 Channel'} • <span style="color: ${item.status === 'live' ? '#4ade80' : '#94a3b8'}">${item.status.toUpperCase()}</span></p>
+                        </div>
+                    </div>
+                    <button class="btn btn-watch" onclick="openPlayer(${item.id})">▶ Watch Now</button>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function filterContent(status) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            renderGrid(status);
+        }
+
+        // --- Player Logic ---
+        function openPlayer(id) {
+            const item = contentData.find(i => i.id === id);
+            if (!item) return;
+
+            document.getElementById('playerModal').classList.remove('hidden');
+            document.getElementById('playerTitle').textContent = item.title;
+            const container = document.getElementById('playerContainer');
+            const sourceSelector = document.getElementById('sourceSelector');
+            container.innerHTML = '';
+            sourceSelector.innerHTML = '';
+
+            if (item.sources.length > 1) {
+                item.sources.forEach((src, index) => {
+                    const btn = document.createElement('button');
+                    btn.textContent = `Server ${index + 1}`;
+                    btn.onclick = () => loadStream(src, container);
+                    sourceSelector.appendChild(btn);
+                });
+            }
+
+            if (item.sources.length > 0) loadStream(item.sources[0], container);
+            else container.innerHTML = '<p style="padding: 20px; text-align: center;">No stream source available.</p>';
+        }
+
+        function loadStream(url, container) {
+            container.innerHTML = '';
+            const urlLower = url.toLowerCase();
+
+            if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) {
+                const videoId = getYouTubeId(url);
+                container.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1" allowfullscreen></iframe>`;
+            } else if (urlLower.includes('twitch.tv')) {
+                const channel = url.split('/').pop();
+                container.innerHTML = `<iframe src="https://player.twitch.tv/?channel=${channel}&parent=${location.hostname}&autoplay=true" allowfullscreen></iframe>`;
+            } else if (urlLower.endsWith('.m3u8')) {
+                container.innerHTML = `<video id="hlsPlayer" controls autoplay></video>`;
+                const video = document.getElementById('hlsPlayer');
+                if (Hls.isSupported()) {
+                    const hls = new Hls();
+                    hls.loadSource(url);
+                    hls.attachMedia(video);
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = url;
+                }
+            } else {
+                container.innerHTML = `<iframe src="${url}" allowfullscreen></iframe>`;
+            }
+        }
+
+        function getYouTubeId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : url;
+        }
+
+        function closePlayer() {
+            document.getElementById('playerModal').classList.add('hidden');
+        }
+
+        // --- Admin Logic ---
+        function loginAdmin() {
+            const pass = document.getElementById('adminPassword').value;
+            if (pass === 'admin123') {
+                isAdmin = true;
+                sessionStorage.setItem('isAdmin', 'true');
+                document.getElementById('loginModal').classList.add('hidden');
+                showAdminPanel();
+            } else {
+                document.getElementById('loginError').textContent = 'Wrong password!';
+            }
+        }
+
+        function showAdminPanel() {
+            document.getElementById('adminPanel').classList.add('active');
+            renderAdminList();
+        }
+
+        function renderAdminList() {
+            const list = document.getElementById('adminList');
+            list.innerHTML = '';
+            contentData.forEach(item => {
+                const div = document.createElement('div');
+                div.style.cssText = 'background: #334155; padding: 10px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;';
+                div.innerHTML = `
+                    <div><strong>${item.title}</strong> (${item.type} - ${item.status})</div>
+                    <div>
+                        <button class="btn btn-danger" style="padding: 5px 10px; font-size: 0.8rem;" onclick="deleteItem(${item.id})">Delete</button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function addContent() {
+            const type = document.getElementById('contentType').value;
+            const title = document.getElementById('contentTitle').value;
+            const logo = document.getElementById('contentLogo').value;
+            const sources = document.getElementById('contentSources').value.split(',').map(s => s.trim()).filter(s => s);
+            const status = document.getElementById('contentStatus').value;
+
+            if (!title || sources.length === 0) { alert('Please fill title and at least one source.'); return; }
+
+            const newItem = {
+                id: Date.now(),
+                type, title, logo, sources, status
+            };
+
+            contentData.push(newItem);
+            saveData();
+            renderGrid();
+            renderAdminList();
+            alert('Added successfully!');
+            document.getElementById('contentTitle').value = '';
+            document.getElementById('contentSources').value = '';
+        }
+
+        function deleteItem(id) {
+            if (!confirm('Are you sure?')) return;
+            contentData = contentData.filter(i => i.id !== id);
+            saveData();
+            renderGrid();
+            renderAdminList();
+        }
+
+        function clearAllData() {
+            if (!confirm('This will delete ALL data. Are you sure?')) return;
+            contentData = [];
+            saveData();
+            renderGrid();
+            renderAdminList();
+        }
+
+        function saveData() {
+            localStorage.setItem('cricxData', JSON.stringify(contentData));
+        }
+
+        // --- Toggle Admin ---
+        document.getElementById('adminToggleBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (isAdmin) {
+                document.getElementById('adminPanel').classList.toggle('active');
+            } else {
+                document.getElementById('loginModal').classList.toggle('hidden');
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>
